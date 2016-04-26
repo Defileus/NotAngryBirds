@@ -1,0 +1,328 @@
+#preview image
+preview = new PreviewImage("https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/angry-bossman-v2.png")
+
+#scope vars
+canvasWidth = 900
+canvasHeight = 650
+stuff = null
+emitter = null
+bossman = null
+background = null
+releasePoint = null
+bungee = null
+dragging = false
+score = 0
+scoreText = null
+firePos =
+  x : 280
+  y : 900
+
+#preload images
+preload = ->
+  
+  background = game.load.image "background", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/background.png?v=2"
+  background.crossOrigin = "Anonymous"
+ 
+  lamp = game.load.image "lamp", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/lamp.png"
+  lamp.crossOrigin = "Anonymous"
+
+  beer = game.load.image "beer", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/beer.png"
+  beer.crossOrigin = "Anonymous"
+  
+  printer = game.load.image "printer", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/printer.png"
+  printer.crossOrigin = "Anonymous"
+ 
+  boombox = game.load.image "boombox", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/boombox.png"
+  boombox.crossOrigin = "Anonymous"
+
+  blockx = game.load.image "blockx", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/blockx.png"
+  blockx.crossOrigin = "Anonymous"
+  
+  blocky = game.load.image "blocky", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/blocky.png"
+  blocky.crossOrigin = "Anonymous"
+  
+  box = game.load.image "box", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/box.png"
+  box.crossOrigin = "Anonymous"
+  
+  particle = game.load.image "particle", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/star.png"
+  particle.crossOrigin = "Anonymous"
+  
+  bossman = game.load.image "bossman", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/bossmanv2.png"
+  bossman.crossOrigin = "Anonymous"
+  
+  releasePoint = game.load.image "releasePoint", "https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/release-point.png?v=2"
+  releasePoint.crossOrigin = "Anonymous"
+  
+  # load game physics file
+  # you don't need to do this, but it helps with complex 
+  # shapes like bossman and the lamp. See https://www.codeandweb.com/physicseditor for more info.
+  game.load.physics('physicsData', 'https://s3-us-west-2.amazonaws.com/s.cdpn.io/150586/angry-physics.json')
+  
+#create the world and main game objects
+create = ->
+  
+  #hide codepen preview image
+  preview.clear()
+  
+  #set scale mode
+  #game.scale.scaleMode = Phaser.ScaleManager.EXACT_FIT
+  #game.scale.scaleMode = Phaser.ScaleManager.RESIZE
+  game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL
+  game.scale.pageAlignVertically = true
+  game.scale.pageAlignHorizontally = true
+  
+  
+  #world
+  game.world.setBounds(0, 0, 3000, 1200)
+  game.camera.setBoundsToWorld()
+ 
+  #setup the stage
+  game.stage.backgroundColor = '#888888'
+  background = game.add.sprite(0, 0, "background")
+  background.width =  game.world.width
+  background.height =  game.world.height + 5
+
+  # score text
+  scoreText = game.add.text(50, 65, score,
+    font: '74px Arial Black'
+    fill: '#c51b7d'
+  )
+  scoreText.stroke = '#de77ae'
+  scoreText.anchor.setTo(0,0)
+  scoreText.strokeThickness = 16
+  scoreText.setShadow 2, 2, '#333333', 2, false, false
+  scoreText.fixedToCamera = true
+  
+  # instructions text
+  instructionsText = game.add.text(50, 25, "CLICK AND DRAG ANGRY BOSSMAN TO SEND HIM FLYING",
+    font: '25px Arial Black'
+    fill: '#c51b7d'
+  )
+  instructionsText.stroke = '#de77ae'
+  instructionsText.anchor.setTo(0,0)
+  instructionsText.strokeThickness = 6
+  instructionsText.setShadow 2, 2, '#333333', 2, false, false
+  instructionsText.fixedToCamera = true
+  
+  #and the physics engine (p2)
+  game.physics.startSystem(Phaser.Physics.P2JS)
+  game.physics.p2.gravity.y = 1200
+  
+  #build the level
+  buildLevel()
+      
+  #collision particle emmiter
+  emitter = game.add.emitter(0, 0, 100);
+  emitter.makeParticles('particle');
+  emitter.gravity = 200
+  
+  #visual release point
+  releasePoint = game.add.sprite(firePos.x, firePos.y, "releasePoint")
+  releasePoint.anchor.setTo(0.5, 0.5)
+  
+  #add Bossman
+  bossman = game.add.sprite(firePos.x, firePos.y, "bossman")
+  game.physics.p2.enable bossman
+  bossman.anchor.setTo(0.5, 0.5)
+  #add complex shape data (json exported using PhysicsEditior)
+  bossman.body.clearShapes()
+  bossman.body.loadPolygon('physicsData', 'bossman')
+  
+  #bossman contact collision listener
+  bossman.body.onBeginContact.add collision, this
+  
+  #input and camera
+  bossman.inputEnabled = true
+  game.camera.follow bossman
+  resetBossman()
+  
+  #bossman event handlers
+  bossman.events.onInputDown.add bossmanDownHandler, this
+  bossman.events.onInputUp.add bossmanUpHandler, this
+  
+  #line connecting bossman and release point
+  bungee = new Phaser.Line bossman.x, bossman.y, releasePoint.x, releasePoint.y
+
+  
+#build level
+buildLevel = ()->
+  
+  #stuff group
+  stuff = game.add.group()
+   
+  ### BOXES ###
+  for yOffset in [1..3] by 1
+    y = game.world.height - ( game.cache.getImage("box").height * yOffset * 1 )
+    addThing "box", 2300, y, 10
+  
+  for yOffset in [1..5] by 1
+    y = game.world.height - ( game.cache.getImage("box").height * yOffset * 1 )
+    addThing "box", 2800, y, 10
+      
+  ### LAMPS ###
+  addThing "lamp", 900, 700, 15, true
+  addThing "lamp", 2000, 700, 15, true
+  
+  ### TABLE ###
+  addThing "blocky", 600, 1000, 5
+  addThing "blocky", 800, 1000, 5
+  addThing "blockx", 700, 800, 10
+  
+  ### TABLE ###
+  addThing "blocky", 1600, 1000, 5
+  addThing "blocky", 1800, 1000, 5
+  addThing "blockx", 1700, 800, 10
+  
+  #BOOMBOXES
+  addThing "boombox", 2400, 700, 40
+  addThing "boombox", 1400, 700, 40
+  
+  #PRINTER
+  addThing "printer", 700, 700, 20, true
+  
+  #BEER
+  addThing "beer", 580, 700, 5
+  addThing "beer", 820, 700, 5
+  
+  addThing "beer", 580, 700, 5
+  addThing "beer", 820, 700, 5
+  
+  addThing "beer", 1580, 700, 5
+  addThing "beer", 1820, 700, 5
+  
+  addThing "beer", 2580, 700, 5
+  addThing "beer", 2820, 700, 5
+ 
+  for xOffset in [1..10] by 1
+    x = (200 * xOffset + Math.floor((Math.random() * 200) + 1)) + 400
+    addThing "beer", x, 150, 5
+
+# add things to stuff
+addThing = (key=null, x=0, y=0, health=10, physicsData=false)->
+  #create thing in group
+  thing = stuff.create(x,y,key)
+  #add health so we can destroy it
+  thing.health = health
+  #add physics
+  game.physics.p2.enable thing
+  #check for physics data
+  if physicsData
+    thing.body.clearShapes()
+    thing.body.loadPolygon('physicsData', key)    
+  
+#update score
+updateScore = (points)->
+  score += points
+  scoreText.text = score
+  
+#handle the sprite collision
+collision = (body)->
+  
+  #make sure it's a sprite and has a key
+  if body?.sprite?.key
+    
+    #determine the amount damage based on bossman's x & y velocity
+    damage = Math.floor(bossman.body.velocity.destination[0] + bossman.body.velocity.destination[1] / 10) * -1
+    
+    #and make sure it's enough to actually cause some damage
+    if damage >= 1
+      applyDamage body.sprite, damage
+     
+#there seems to be a bug with dynamically switching body types so this a little helper to make it a little more symantic
+setBodyType = (entity, type)->
+  switch type
+    when "dynamic"
+      entity.body.data.motionState = 1
+    when "static"
+      entity.body.data.motionState = 2
+  
+#reset bossman to all his defaults
+resetBossman = ()->
+  setBodyType bossman, "static"
+  bossman.body.x = firePos.x
+  bossman.body.y = firePos.y
+  bossman.body.angle = 0
+  bossman.body.velocity.x = 0
+  bossman.body.velocity.y = 0
+  bossman.body.angularVelocity = 0
+  
+#handle down input on bossman
+bossmanDownHandler = (obj)->
+  #console.log "bossman grabbed", game.input.x, game.input.y
+  setBodyType bossman, "static"
+  dragging = true
+
+#handle up input on bossman
+bossmanUpHandler = (obj)->
+  #console.log "bossman released", game.input.x, game.input.y
+  diffx = game.input.worldX - firePos.x
+  diffy = game.input.worldY - firePos.y
+  updateBossmanPos(diffx, diffy)
+  
+  #set the body type back to dynamic
+  setBodyType bossman, "dynamic"
+  dragging = false
+
+  #apply some thrust and let him fly
+  obj.body.thrust -diffx * 500
+  obj.body.thrust diffy * 500
+
+#this takes the x and y distance of bossman from the release point to determine the x and y pos and angle of bossman. This part is definitely not perfect and still a work in progress
+updateBossmanPos = (dx, dy)->
+
+  bossman.body.x = firePos.x + (dx*0.3)
+  bossman.body.y = firePos.y + (dy*0.3)
+  
+  distance = Math.sqrt((dx*dx) + (dy*dy))
+#   bossman.body.angle = distance * 0.2
+  bossman.body.angle = distance * 0.1
+  
+#BOSSMAN SMASH
+applyDamage = (thing, damage=3)->
+  
+  #deduct some health from the thing we just hit
+  thing.health -= damage
+  
+  #add points
+  updateScore(damage)
+  
+  #create some eplosion particles / check thing's health
+  if thing.health <= 0
+    particleBurst thing, 20
+    thing.kill()
+  else 
+    particleBurst thing
+    
+#send some particles flying on impact 
+particleBurst = (obj, count=10) ->
+  
+  #  Position the emitter where the object's position
+  emitter.x = obj.x
+  emitter.y = obj.y
+  
+  # explode!
+  emitter.start true, 2000, null, count
+  
+#main game update loop
+update = ->
+  if dragging
+    #update bossman position
+    diffx = game.input.worldX - firePos.x
+    diffy = game.input.worldY - firePos.y
+    updateBossmanPos(diffx, diffy)
+    #update the line
+    bungee.fromSprite(bossman, releasePoint, false)
+
+#render loop
+render = ->
+  #DEBUG
+  game.debug.geom bungee
+  #game.debug.spriteInfo bossman, 32, 32
+
+#initialize the game!
+game = new Phaser.Game(canvasWidth, canvasHeight, Phaser.AUTO, "game",
+  preload: preload
+  create: create
+  update: update
+  render: render
+)

@@ -1,0 +1,16 @@
+{
+  "ammo": [
+
+    {
+      "density": 2, "friction": 0, "bounce": 0,
+      "filter": { "categoryBits": 1, "maskBits": 65535 },
+      "shape": [   106, 35  ,  109, 61  ,  74, 88  ,  28, 86  ,  7, 68  ,  1, 47  ,  49, 1  ]
+    } ,
+    {
+      "density": 2, "friction": 0, "bounce": 0,
+      "filter": { "categoryBits": 1, "maskBits": 65535 },
+      "shape": [   37, 124  ,  21, 104  ,  28, 86  ,  74, 88  ,  86, 94  ,  70, 124  ]
+    }
+  ]
+
+}
